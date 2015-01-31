@@ -14,7 +14,7 @@ namespace StorjVirtualDisk
 
         public long Size { get; set; }
 
-        //public DateTime? Date { get; set; }
+        public DateTime? Date { get; set; }
 
         private IList<FileReferences> children;
         public IList<FileReferences> Children 
@@ -44,7 +44,7 @@ namespace StorjVirtualDisk
 
             if (pathParts.Any() && (pathParts.First() == Name || (string.IsNullOrEmpty(pathParts.First()) && string.IsNullOrEmpty(Name))))
             {
-                return Children.FirstOrDefault(child => child.GetFolderReference(string.Join(@"\", pathParts.Skip(1).ToArray())) != null) ?? (IsFolder() ? this : null);
+                return Children.Select(child => child.GetFolderReference(string.Join(@"\", pathParts.Skip(1).ToArray()))).FirstOrDefault(child => child != null) ?? (IsFolder() ? this : null);
             }
 
             //return IsFolder() ? this : null;

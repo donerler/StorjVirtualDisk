@@ -31,6 +31,9 @@
     <ErrorReport>prompt</ErrorReport>
     <WarningLevel>4</WarningLevel>
   </PropertyGroup>
+  <PropertyGroup>
+    <ApplicationIcon>TrayIcon.ico</ApplicationIcon>
+  </PropertyGroup>
   <ItemGroup>
     <Reference Include="DokanNet">
       <HintPath>Lib\DokanNet.dll</HintPath>
@@ -88,6 +91,7 @@
   </ItemGroup>
   <ItemGroup>
     <Content Include="Resources\TrayIconRefresh.ico" />
+    <Content Include="TrayIcon.ico" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 

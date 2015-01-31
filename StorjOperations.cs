@@ -5,6 +5,7 @@ using StorjClient.Data;
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -97,16 +98,22 @@ namespace StorjVirtualDisk
 
         public int Cleanup(string filename, DokanFileInfo info)
         {
+            WriteTrace("cleanup:", filename);
+
             return DokanNet.DOKAN_SUCCESS;
         }
 
         public int CloseFile(string filename, DokanFileInfo info)
         {
+            WriteTrace("closefile", filename);
+
             return DokanNet.DOKAN_SUCCESS;
         }
 
         public int CreateDirectory(string filename, DokanFileInfo info)
         {
+            WriteTrace("createdirectory", filename);
+
             FileReferences folderReference = files.Value.GetFolderReference(filename);
 
             string name = filename.Split(new [] {'\\'}, StringSplitOptions.RemoveEmptyEntries).LastOrDefault();
@@ -130,6 +137,8 @@ namespace StorjVirtualDisk
 
         public int CreateFile(string filename, FileAccess access, FileShare share, FileMode mode, FileOptions options, DokanFileInfo info)
         {
+            WriteTrace("createfile", filename, access, share, mode, options);
+
             if (share == FileShare.Delete)
             {
                 return DeleteFile(filename, info);
@@ -156,11 +165,15 @@ namespace StorjVirtualDisk
 
         public int DeleteDirectory(string filename, DokanFileInfo info)
         {
+            WriteTrace("deletedirectory", filename);
+
             return DeleteFile(filename, info);
         }
 
         public int DeleteFile(string filename, DokanFileInfo info)
         {
+            WriteTrace("deletefile", filename);
+
             FileReferences oldParentReference = files.Value.GetFolderReference(filename.Substring(0, filename.LastIndexOf('\\') + 1));
 
             if (oldParentReference == null)
@@ -185,6 +198,8 @@ namespace StorjVirtualDisk
 
         public int FindFiles(string filename, ArrayList fileList, DokanFileInfo info)
         {
+            WriteTrace("findfiles", filename);
+
             FileReferences folderReference = files.Value.GetFolderReference(filename);
 
             if (folderReference == null || !folderReference.IsFolder())
@@ -196,9 +211,9 @@ namespace StorjVirtualDisk
             {
                 Attributes = child.IsFolder() ? FileAttributes.Directory : FileAttributes.Normal,
                 FileName = child.Name,
-                LastAccessTime = DateTime.Now,//child.Date ?? DateTime.Now,
-                LastWriteTime = DateTime.Now,//child.Date ?? DateTime.Now,
-                CreationTime = DateTime.Now,//child.Date ?? DateTime.Now,
+                LastAccessTime = child.Date ?? DateTime.Now,
+                LastWriteTime = child.Date ?? DateTime.Now,
+                CreationTime = child.Date ?? DateTime.Now,
                 Length = child.Size
             }).ToArray());
 
@@ -207,11 +222,15 @@ namespace StorjVirtualDisk
 
         public int FlushFileBuffers(string filename, DokanFileInfo info)
         {
+            WriteTrace("flushfilebuffers", filename);
+
             return DokanNet.DOKAN_SUCCESS;
         }
 
         public int GetDiskFreeSpace(ref ulong freeBytesAvailable, ref ulong totalBytes, ref ulong totalFreeBytes, DokanFileInfo info)
         {
+            WriteTrace("getfreediskspace");
+
             freeBytesAvailable = 1024 * 1024 * 1024;
             totalBytes = 1024 * 1024 * 1024;
             totalFreeBytes = 1024 * 1024 * 1024;
@@ -221,11 +240,13 @@ namespace StorjVirtualDisk
 
         public int GetFileInformation(string filename, Dokan.FileInformation fileinfo, DokanFileInfo info)
         {
+            WriteTrace("getfileinformation", filename);
+
             FileReferences fileReference = files.Value.GetFolderReference(filename);
 
             string name = filename.Split(new [] {'\\'}, StringSplitOptions.RemoveEmptyEntries).LastOrDefault();
 
-            if (fileReference != null && fileReference.Name != name)
+            if (fileReference != null && (fileReference.Name ?? string.Empty) != (name ?? string.Empty))
             {
                 return DokanNet.DOKAN_SUCCESS;
             }
@@ -233,9 +254,9 @@ namespace StorjVirtualDisk
             if (fileReference != null)
             {
                 fileinfo.Attributes = fileReference.IsFolder() ? FileAttributes.Directory : FileAttributes.Normal;
-                fileinfo.LastAccessTime = DateTime.Now;// fileReference.Date ?? DateTime.Now;
-                fileinfo.LastWriteTime = DateTime.Now;//fileReference.Date ?? DateTime.Now;
-                fileinfo.CreationTime = DateTime.Now;//fileReference.Date ?? DateTime.Now;
+                fileinfo.LastAccessTime = fileReference.Date ?? DateTime.Now;
+                fileinfo.LastWriteTime = fileReference.Date ?? DateTime.Now;
+                fileinfo.CreationTime = fileReference.Date ?? DateTime.Now;
                 fileinfo.FileName = fileReference.Name;
                 fileinfo.Length = fileReference.Size;
 
@@ -247,12 +268,16 @@ namespace StorjVirtualDisk
 
         public int LockFile(string filename, long offset, long length, DokanFileInfo info)
         {
+            WriteTrace("lockfile", filename, offset, length);
+
             return DokanNet.DOKAN_SUCCESS;
         }
 
         public int MoveFile(string filename, string newname, bool replace, DokanFileInfo info)
         {
-            string name = newname.Split(new [] {'\\'}, StringSplitOptions.RemoveEmptyEntries).LastOrDefault();
+            WriteTrace("movefile", filename, newname, replace);
+
+            string name = newname.Split(new[] { '\\' }, StringSplitOptions.RemoveEmptyEntries).LastOrDefault();
 
             if (!IsContainerNameValid(name))
             {
@@ -286,11 +311,15 @@ namespace StorjVirtualDisk
 
         public int OpenDirectory(string filename, DokanFileInfo info)
         {
+            WriteTrace("opendirectory", filename);
+
             return DokanNet.DOKAN_SUCCESS;
         }
 
         public int ReadFile(string filename, byte[] buffer, ref uint readBytes, long offset, DokanFileInfo info)
         {
+            WriteTrace("readfile", filename);
+
             string name = filename.Split(new[] { '\\' }, StringSplitOptions.RemoveEmptyEntries).LastOrDefault();
 
             FileReferences fileReference = files.Value.GetFolderReference(filename);
@@ -326,36 +355,50 @@ namespace StorjVirtualDisk
 
         public int SetAllocationSize(string filename, long length, DokanFileInfo info)
         {
+            WriteTrace("setallocationsize", filename);
+
             return DokanNet.DOKAN_SUCCESS;
         }
 
         public int SetEndOfFile(string filename, long length, DokanFileInfo info)
         {
+            WriteTrace("setendoffile", filename, length);
+
             return DokanNet.DOKAN_SUCCESS;
         }
 
         public int SetFileAttributes(string filename, FileAttributes attr, DokanFileInfo info)
         {
+            WriteTrace("setfileattributes", filename, attr);
+
             return DokanNet.DOKAN_SUCCESS;
         }
 
         public int SetFileTime(string filename, DateTime ctime, DateTime atime, DateTime mtime, DokanFileInfo info)
         {
+            WriteTrace("setfiletime", filename, ctime, atime, mtime);
+
             return DokanNet.DOKAN_SUCCESS;
         }
 
         public int UnlockFile(string filename, long offset, long length, DokanFileInfo info)
         {
+            WriteTrace("unlockfile", filename, offset, length);
+
             return DokanNet.DOKAN_SUCCESS;
         }
 
         public int Unmount(DokanFileInfo info)
         {
+            WriteTrace("unmount");
+
             return DokanNet.DOKAN_SUCCESS;
         }
 
         public int WriteFile(string filename, byte[] buffer, ref uint writtenBytes, long offset, DokanFileInfo info)
         {
+            WriteTrace("writefile", filename);
+
             try
             {
                 StartCommunication();
@@ -382,7 +425,7 @@ namespace StorjVirtualDisk
 
                 fileReference.Hash = cloudFile.FileHash;
                 fileReference.Key = cloudFile.Key;
-                //fileReference.Date = DateTime.Now;
+                fileReference.Date = DateTime.Now;
                 fileReference.Size = buffer.Length;
 
                 PersistFileReferences();
@@ -402,6 +445,11 @@ namespace StorjVirtualDisk
         private static bool IsContainerNameValid(string containerName)
         {
             return (!containerName.Any(c => Path.GetInvalidPathChars().Contains(c)) && (3 <= containerName.Length) && (containerName.Length <= 63));
+        }
+
+        private static void WriteTrace(params object[] arguments)
+        {
+            Trace.WriteLine(string.Join("|", arguments));
         }
     }
 }

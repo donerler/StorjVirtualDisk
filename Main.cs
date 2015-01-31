@@ -29,6 +29,10 @@ namespace StorjVirtualDisk
             opt.VolumeLabel = "Storj";
 
             dokanTask =  Task.Factory.StartNew(() => DokanNet.DokanMain(opt, new StorjOperations(OnCommunication)));
+
+            TrayIcon.BalloonTipTitle = "Storj Virtual Disk ready";
+            TrayIcon.BalloonTipText = "The Storj Virtual Disk successfully mounted to drive '" + driveLetter + "' and is now ready to use.";
+            TrayIcon.ShowBalloonTip(TimeSpan.FromSeconds(5).Milliseconds);
         }
 
         private void OnCommunication(bool isBussy)
