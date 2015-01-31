@@ -28,7 +28,9 @@ For a video demo look at: http://youtu.be/LJcl4P_FXDQ
 
 # Installation and requirements
 The application uses a third part virtual disk driver called Dokan. To install teh application follow teh following steps:
+
 1) Install Dokan by running the setup from install\DokanInstall_0.6.0.exe (note for Windows 8 you must run the installer in compatibility mode)
+
 2) Instal the Storj Virtual Disk by running the setup from install\setup.msi
 
 # Mounting the virtual disk
