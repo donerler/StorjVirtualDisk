@@ -7,17 +7,22 @@ The current state of the application is not optimized and only allows uploading 
 # Features and impressions
 
 1 - Tray network notifications
+
 ![Alt text](/../screenshots/01 - TrayApplication.PNG?raw=true "Tray network notifications")
 ![Alt text](/../screenshots/05 - Network sync indication.PNG?raw=true "Network sync indication")
 
 2 - A virtual disk accesable in Explorer
+
 ![Alt text](/../screenshots/02 - Drive in Explorer.PNG?raw=true "A virtual disk accesable in Explorer")
 
 3 - Files and folders on decentralized data storage platform visible in Explorer
+
 ![Alt text](/../screenshots/03 - Files in Explorer.PNG?raw=true "Files and folders on decentralized data storage platform visible in Explorer")
 
 4 - Support for navigating, copying and deleting of files on the decentralized data storage platform
+
 ![Alt text](/../screenshots/04 - Copying - Uploading.PNG?raw=true "Support for navigating, copying and deleting of files on the decentralized data storage platform")
+
 
 For a video demo look at: http://youtu.be/LJcl4P_FXDQ
 
