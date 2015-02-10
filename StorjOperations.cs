@@ -10,6 +10,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Threading.Tasks;
 
 namespace StorjVirtualDisk
 {
@@ -57,7 +58,7 @@ namespace StorjVirtualDisk
 
                 return JsonConvert.DeserializeObject<FileReferences>(Encoding.ASCII.GetString(fileListBytes));
             }
-            catch 
+            catch (Exception e)
             {
                 return new FileReferences { Name = string.Empty };
             }
@@ -73,7 +74,7 @@ namespace StorjVirtualDisk
 
             try
             {
-                UploadedFile cloudFile = client.UploadAsync(new MemoryStream(Encoding.ASCII.GetBytes(data)), "somefile.txt").Result;
+                UploadedFile cloudFile = client.UploadAsync(new MemoryStream(Encoding.ASCII.GetBytes(data)), "data.dat").Result;
 
                 File.WriteAllText(dataFile.Value, string.Format("{0}|{1}", cloudFile.FileHash, cloudFile.Key));
             }
@@ -100,12 +101,26 @@ namespace StorjVirtualDisk
         {
             WriteTrace("cleanup:", filename);
 
+            //FileUploader fileUploader = info.Context as FileUploader;
+            //if (fileUploader != null)
+            //{
+            //    OnUploadComplete(fileUploader, filename);
+            //}
+
+            EndCommunication();
+
             return DokanNet.DOKAN_SUCCESS;
         }
 
         public int CloseFile(string filename, DokanFileInfo info)
         {
             WriteTrace("closefile", filename);
+
+            //FileUploader fileUploader = info.Context as FileUploader;
+            //if (fileUploader != null)
+            //{
+            //    OnUploadComplete(fileUploader, filename);
+            //}
 
             return DokanNet.DOKAN_SUCCESS;
         }
@@ -139,17 +154,40 @@ namespace StorjVirtualDisk
         {
             WriteTrace("createfile", filename, access, share, mode, options);
 
+            FileReferences fileReference = files.Value.GetFolderReference(filename);
+
+            string name = filename.Split(new[] { '\\' }, StringSplitOptions.RemoveEmptyEntries).LastOrDefault();
+
             if (share == FileShare.Delete)
             {
                 return DeleteFile(filename, info);
             }
 
-            if (mode == FileMode.CreateNew)
+            if (!(info.Context is FileUploader) && (mode == FileMode.CreateNew || mode == FileMode.Create || mode == FileMode.OpenOrCreate))
             {
+                if (fileReference != null && fileReference.Name == name)
+                {
+                    return -DokanNet.ERROR_ALREADY_EXISTS;
+                }
+
+                info.Context = CreateFileUploader(filename);
+                info.IsDirectory = false;
+
                 return DokanNet.DOKAN_SUCCESS;
             }
 
-            FileReferences fileReference = files.Value.GetFolderReference(filename);
+            if (!(info.Context is FileDownloader) && (mode == FileMode.Open) && (fileReference == null || !fileReference.IsFolder()))
+            {
+                if (fileReference == null || fileReference.Name != name)
+                {
+                    return -DokanNet.ERROR_FILE_NOT_FOUND;
+                }
+
+                info.Context = CreateFileDownloaderAsync(filename).Result;
+                info.IsDirectory = false;
+
+                return DokanNet.DOKAN_SUCCESS;
+            }
 
             if (fileReference != null)
             {
@@ -231,9 +269,9 @@ namespace StorjVirtualDisk
         {
             WriteTrace("getfreediskspace");
 
-            freeBytesAvailable = 1024 * 1024 * 1024;
-            totalBytes = 1024 * 1024 * 1024;
-            totalFreeBytes = 1024 * 1024 * 1024;
+            freeBytesAvailable = 2147483648;
+            totalBytes = 2147483648;
+            totalFreeBytes = 2147483648;
 
             return DokanNet.DOKAN_SUCCESS;
         }
@@ -248,7 +286,7 @@ namespace StorjVirtualDisk
 
             if (fileReference != null && (fileReference.Name ?? string.Empty) != (name ?? string.Empty))
             {
-                return DokanNet.DOKAN_SUCCESS;
+                return -DokanNet.ERROR_FILE_NOT_FOUND;
             }
 
             if (fileReference != null)
@@ -320,42 +358,30 @@ namespace StorjVirtualDisk
         {
             WriteTrace("readfile", filename);
 
-            string name = filename.Split(new[] { '\\' }, StringSplitOptions.RemoveEmptyEntries).LastOrDefault();
+            StartCommunication();
 
-            FileReferences fileReference = files.Value.GetFolderReference(filename);
+            FileDownloader fileDownloader = info.Context as FileDownloader;
 
-            if (fileReference == null || fileReference.Name != name)
+            if (fileDownloader == null)
             {
                 return -DokanNet.ERROR_FILE_NOT_FOUND;
             }
 
-            try
-            {
-                StartCommunication();
-
-                StorjApiClient client = new StorjApiClient(apiUrl);
-
-                using (MemoryStream stream = new MemoryStream(client.DownloadAsync(fileReference.Hash, fileReference.Key).Result))
-                {
-                    stream.Seek(offset, SeekOrigin.Begin);
-                    readBytes = (uint)stream.Read(buffer, 0, buffer.Length);
-                }
-            }
-            catch
-            {
-                return -DokanNet.ERROR_FILE_NOT_FOUND;
-            }
-            finally
-            {
-                EndCommunication();
-            }
+            readBytes = (uint)fileDownloader.Read(buffer, offset);
 
             return DokanNet.DOKAN_SUCCESS;
         }
 
         public int SetAllocationSize(string filename, long length, DokanFileInfo info)
         {
-            WriteTrace("setallocationsize", filename);
+            WriteTrace("setallocationsize", filename, length);
+
+            FileUploader fileUploader = info.Context as FileUploader;
+            if (fileUploader != null)
+            {
+                fileUploader.Size = length;
+                WriteTrace("setallocationsize", filename, fileUploader.Id, fileUploader.Size);
+            }
 
             return DokanNet.DOKAN_SUCCESS;
         }
@@ -363,6 +389,12 @@ namespace StorjVirtualDisk
         public int SetEndOfFile(string filename, long length, DokanFileInfo info)
         {
             WriteTrace("setendoffile", filename, length);
+
+            FileUploader fileUploader = info.Context as FileUploader;
+            if (fileUploader != null)
+            {
+                fileUploader.Size = length;
+            }
 
             return DokanNet.DOKAN_SUCCESS;
         }
@@ -397,51 +429,106 @@ namespace StorjVirtualDisk
 
         public int WriteFile(string filename, byte[] buffer, ref uint writtenBytes, long offset, DokanFileInfo info)
         {
-            WriteTrace("writefile", filename);
+            WriteTrace("writefile", filename, offset);
 
-            try
+            StartCommunication();
+
+            FileUploader fileUploader = info.Context as FileUploader;
+
+            if (fileUploader == null)
             {
-                StartCommunication();
+                WriteTrace("writefile", filename, "no uploader found");
+                return -DokanNet.ERROR_ACCESS_DENIED;
+            }
 
-                string name = filename.Split(new[] { '\\' }, StringSplitOptions.RemoveEmptyEntries).LastOrDefault();
+            DokanNet.DokanResetTimeout(1000 * 30, info);
 
-                FileReferences fileReference = files.Value.GetFolderReference(filename);
+            fileUploader.WriteAsync(buffer).Wait();
 
-                if (fileReference == null)
+            writtenBytes = (uint)buffer.Length;
+
+            if (fileUploader.IsFinished())
+            {
+                OnUploadComplete(fileUploader, filename);
+            }
+
+            WriteTrace("writefile", filename, writtenBytes, fileUploader.Id, fileUploader.IsFinished());
+            
+            return DokanNet.DOKAN_SUCCESS;
+        }
+
+        private void OnUploadComplete(FileUploader fileUploader, string filename)
+        {
+            FileReferences fileReference = files.Value.GetFolderReference(filename);
+
+            if (fileUploader == null || fileReference == null)
+            {
+                EndCommunication();
+                return;
+            }
+
+            if (fileReference.Name != fileUploader.FileName && fileReference.IsFolder())
+            {
+                FileReferences newFileReference = new FileReferences { Name = fileUploader.FileName };
+                fileReference.Children.Add(newFileReference);
+
+                fileReference = newFileReference;
+            }
+
+            fileReference.Size = fileUploader.Size;
+            fileReference.Date = DateTime.Now;
+            fileReference.Hash = FileReferences.UNKNOWN_FILE_HASH;
+            fileReference.Key = FileReferences.UNKNOWN_FILE_HASH;
+
+            PersistFileReferences();
+
+            Task.Factory.StartNew(() =>
+            {
+                UploadedFile cloudFile = fileUploader.Close().Result;
+
+                if (cloudFile == null)
                 {
-                    return -DokanNet.ERROR_PATH_NOT_FOUND;
-                }
-
-                StorjApiClient client = new StorjApiClient(apiUrl);
-                UploadedFile cloudFile = client.UploadAsync(new MemoryStream(buffer), name).Result;
-
-                if (fileReference.Name != name && fileReference.IsFolder())
-                {
-                    FileReferences newFileReference = new FileReferences { Name = name };
-                    fileReference.Children.Add(newFileReference);
-
-                    fileReference = newFileReference;
+                    EndCommunication();
+                    return;
                 }
 
                 fileReference.Hash = cloudFile.FileHash;
                 fileReference.Key = cloudFile.Key;
-                fileReference.Date = DateTime.Now;
-                fileReference.Size = buffer.Length;
 
                 PersistFileReferences();
-            }
-            catch (Exception e)
-            {
-                return -DokanNet.ERROR_ACCESS_DENIED;
-            }
-            finally
-            {
+
                 EndCommunication();
+            });
+        }
+
+        private FileUploader CreateFileUploader(string filename)
+        {
+            string name = filename.Split(new[] { '\\' }, StringSplitOptions.RemoveEmptyEntries).LastOrDefault();
+
+            return new FileUploader(name, apiUrl);
+        }
+
+        private async Task<FileDownloader> CreateFileDownloaderAsync(string filename)
+        {
+            string name = filename.Split(new[] { '\\' }, StringSplitOptions.RemoveEmptyEntries).LastOrDefault();
+
+            FileReferences fileReference = files.Value.GetFolderReference(filename);
+
+            if (fileReference == null || fileReference.Name != name)
+            {
+                return null;
             }
 
-            return DokanNet.DOKAN_SUCCESS;
+            int timeoutConter = 0;
+            while (fileReference.Hash == FileReferences.UNKNOWN_FILE_HASH && timeoutConter < 10)
+            {
+                await Task.Delay(TimeSpan.FromSeconds(1));
+                timeoutConter++;
+            }
+
+            return new FileDownloader(fileReference.Hash, fileReference.Key, apiUrl);
         }
-        
+
         private static bool IsContainerNameValid(string containerName)
         {
             return (!containerName.Any(c => Path.GetInvalidPathChars().Contains(c)) && (3 <= containerName.Length) && (containerName.Length <= 63));

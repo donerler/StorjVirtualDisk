@@ -27,6 +27,8 @@ namespace StorjVirtualDisk
             DokanOptions opt = new DokanOptions();
             opt.MountPoint = driveLetter.Value.ToString();
             opt.VolumeLabel = "Storj";
+            opt.UseStdErr = true;
+            opt.UseKeepAlive = false;
 
             dokanTask =  Task.Factory.StartNew(() => DokanNet.DokanMain(opt, new StorjOperations(OnCommunication)));
 

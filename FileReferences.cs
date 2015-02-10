@@ -6,6 +6,8 @@ namespace StorjVirtualDisk
 {
     public class FileReferences
     {
+        public const string UNKNOWN_FILE_HASH = "UNKNOWN";
+
         public string Name { get; set; }
 
         public string Hash { get; set; }
