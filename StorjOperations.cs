@@ -116,11 +116,11 @@ namespace StorjVirtualDisk
         {
             WriteTrace("closefile", filename);
 
-            //FileUploader fileUploader = info.Context as FileUploader;
-            //if (fileUploader != null)
-            //{
-            //    OnUploadComplete(fileUploader, filename);
-            //}
+            FileUploader fileUploader = info.Context as FileUploader;
+            if (fileUploader != null && fileUploader.IsFinished())
+            {
+                OnUploadComplete(fileUploader, filename);
+            }
 
             return DokanNet.DOKAN_SUCCESS;
         }
@@ -165,7 +165,7 @@ namespace StorjVirtualDisk
 
             if (!(info.Context is FileUploader) && (mode == FileMode.CreateNew || mode == FileMode.Create || mode == FileMode.OpenOrCreate))
             {
-                if (fileReference != null && fileReference.Name == name)
+                if (fileReference != null && fileReference.Name == name && mode != FileMode.OpenOrCreate)
                 {
                     return -DokanNet.ERROR_ALREADY_EXISTS;
                 }
@@ -356,7 +356,7 @@ namespace StorjVirtualDisk
 
         public int ReadFile(string filename, byte[] buffer, ref uint readBytes, long offset, DokanFileInfo info)
         {
-            WriteTrace("readfile", filename);
+            WriteTrace("readfile", filename, buffer.Length, readBytes, offset, info.PagingIo, info.DokanContext);
 
             StartCommunication();
 
@@ -367,7 +367,11 @@ namespace StorjVirtualDisk
                 return -DokanNet.ERROR_FILE_NOT_FOUND;
             }
 
-            readBytes = (uint)fileDownloader.Read(buffer, offset);
+            DokanNet.DokanResetTimeout(1000 * 30, info);
+
+            readBytes = (uint)fileDownloader.Read(buffer, offset).Result;
+
+            WriteTrace("readfile", filename, buffer.Length, readBytes, offset, info.PagingIo, info.DokanContext, fileDownloader.Id, files.Value.GetFolderReference(filename).Size);
 
             return DokanNet.DOKAN_SUCCESS;
         }
