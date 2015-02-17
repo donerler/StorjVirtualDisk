@@ -176,14 +176,14 @@ namespace StorjVirtualDisk
                 return DokanNet.DOKAN_SUCCESS;
             }
 
-            if (!(info.Context is FileDownloader) && (mode == FileMode.Open) && (fileReference == null || !fileReference.IsFolder()))
+            if (!(info.Context is Lazy<FileDownloaderBase>) && (mode == FileMode.Open) && (fileReference == null || !fileReference.IsFolder()))
             {
                 if (fileReference == null || fileReference.Name != name)
                 {
                     return -DokanNet.ERROR_FILE_NOT_FOUND;
                 }
 
-                info.Context = CreateFileDownloaderAsync(filename).Result;
+                info.Context = CreateFileDownloader(filename);
                 info.IsDirectory = false;
 
                 return DokanNet.DOKAN_SUCCESS;
@@ -360,7 +360,7 @@ namespace StorjVirtualDisk
 
             StartCommunication();
 
-            FileDownloader fileDownloader = info.Context as FileDownloader;
+            Lazy<FileDownloaderBase> fileDownloader = info.Context as Lazy<FileDownloaderBase>;
 
             if (fileDownloader == null)
             {
@@ -369,9 +369,9 @@ namespace StorjVirtualDisk
 
             DokanNet.DokanResetTimeout(1000 * 30, info);
 
-            readBytes = (uint)fileDownloader.Read(buffer, offset).Result;
+            readBytes = (uint)fileDownloader.Value.ReadAsync(buffer, offset).Result;
 
-            WriteTrace("readfile", filename, buffer.Length, readBytes, offset, info.PagingIo, info.DokanContext, fileDownloader.Id, files.Value.GetFolderReference(filename).Size);
+            WriteTrace("readfile", filename, buffer.Length, readBytes, offset, info.PagingIo, info.DokanContext, fileDownloader.Value.Id, files.Value.GetFolderReference(filename).Size);
 
             return DokanNet.DOKAN_SUCCESS;
         }
@@ -512,7 +512,7 @@ namespace StorjVirtualDisk
             return new FileUploader(name, apiUrl);
         }
 
-        private async Task<FileDownloader> CreateFileDownloaderAsync(string filename)
+        private Lazy<FileDownloaderBase> CreateFileDownloader(string filename)
         {
             string name = filename.Split(new[] { '\\' }, StringSplitOptions.RemoveEmptyEntries).LastOrDefault();
 
@@ -523,14 +523,17 @@ namespace StorjVirtualDisk
                 return null;
             }
 
-            int timeoutConter = 0;
-            while (fileReference.Hash == FileReferences.UNKNOWN_FILE_HASH && timeoutConter < 10)
+            return new Lazy<FileDownloaderBase>(() =>
             {
-                await Task.Delay(TimeSpan.FromSeconds(1));
-                timeoutConter++;
-            }
+                int timeoutConter = 0;
+                while (fileReference.Hash == FileReferences.UNKNOWN_FILE_HASH && timeoutConter < 10)
+                {
+                    Task.Delay(TimeSpan.FromSeconds(1)).Wait();
+                    timeoutConter++;
+                }
 
-            return new FileDownloader(fileReference.Hash, fileReference.Key, apiUrl);
+                return new DycryptedFileDownloader(fileReference.Hash, fileReference.Key, apiUrl);
+            });
         }
 
         private static bool IsContainerNameValid(string containerName)

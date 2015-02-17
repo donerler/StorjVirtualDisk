@@ -1,15 +1,73 @@
 ﻿using StorjClient;
+using StorjFileEncryptor;
 using System;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
-using System.Linq;
-using System.Text;
 using System.Threading.Tasks;
 
 namespace StorjVirtualDisk
 {
-    public class FileDownloader
+    public class DycryptedFileDownloader : FileDownloaderBase
+    {
+        private Lazy<Aes128CtrCryptoStream> cryptoStream = null;
+
+        public DycryptedFileDownloader(string hash, string key, string apiUrl) 
+            : base(hash, key, apiUrl)
+        {
+        }
+
+        protected override async Task<int> ReadStreamAsync(Stream stream, byte[] buffer, string key)
+        {
+            if (cryptoStream == null)
+            {
+                cryptoStream = new Lazy<Aes128CtrCryptoStream>(() => new Aes128CtrCryptoStream(stream, key));
+            }
+
+            int read = await cryptoStream.Value.ReadAsync(buffer, 0, buffer.Length);
+
+            if (read == 0)
+            {
+                cryptoStream.Value.Dispose();
+                cryptoStream = null;
+            }
+
+            return read;
+        }
+
+        protected override async Task<Stream> DownloadStreamedAsync(StorjApiClient client, string hash, string key)
+        {
+            // Do not provide the key to download the file encrypted
+            return await client.DownloadStreamedAsync(hash);
+        }
+    }
+
+    public class FileDownloader : FileDownloaderBase
+    {
+        public FileDownloader(string hash, string key, string apiUrl) 
+            : base(hash, key, apiUrl)
+        {
+        }
+
+        protected override async Task<int> ReadStreamAsync(Stream stream, byte[] buffer, string key)
+        {
+            int read = await stream.ReadAsync(buffer, 0, buffer.Length);
+
+            // Close stream after download is finished and allow caching of the file
+            if (read == 0)
+            {
+                stream.Dispose();
+            }
+
+            return read;
+        }
+
+        protected override async Task<Stream> DownloadStreamedAsync(StorjApiClient client, string hash, string key)
+        {
+            return await client.DownloadStreamedAsync(hash, key);
+        }
+    }
+
+    public abstract class FileDownloaderBase
     {
         private readonly string hash;
         private readonly string key;
@@ -19,14 +77,14 @@ namespace StorjVirtualDisk
 
         public string Id { get { return lockTask; } }
 
-        public FileDownloader(string hash, string key, string apiUrl)
+        protected FileDownloaderBase(string hash, string key, string apiUrl)
         {
             this.hash = hash;
             this.key = key;
             this.apiUrl = apiUrl;
         }
 
-        public async Task<int> Read(byte[] buffer, long offset)
+        public async Task<int> ReadAsync(byte[] buffer, long offset)
         {
             EnsureDownloadStarted();
 
@@ -36,34 +94,33 @@ namespace StorjVirtualDisk
             {
                 downloadTask.Result.Seek(offset, SeekOrigin.Begin);
 
-                return await downloadTask.Result.ReadAsync(buffer, 0, buffer.Length);
+                return await ReadStreamAsync(downloadTask.Result, buffer, key);
             }
 
-            int read = await downloadTask.Result.ReadAsync(buffer, 0, buffer.Length);
+            int read = await ReadStreamAsync(downloadTask.Result, buffer, key);
             int additionalRead = read;
 
             // Read until buffer is full or nothing more to read
             while (read < buffer.Length && additionalRead > 0 && downloadTask.Result.CanRead)
             {
-                await Task.Delay(TimeSpan.FromMilliseconds(3000));
-             
                 byte[] additionalBuffer = new byte[buffer.Length - read];
 
-                additionalRead = await downloadTask.Result.ReadAsync(additionalBuffer, 0, additionalBuffer.Length);
+                additionalRead = await ReadStreamAsync(downloadTask.Result, additionalBuffer, key);
 
                 Array.Copy(additionalBuffer, 0, buffer, read, additionalRead);
 
                 read += additionalRead;
             }
 
-            if (additionalRead == 0)
+            if (read == 0)
             {
-                downloadTask.Result.Close();
                 downloadTask = null;
             }
 
             return read;
         }
+
+        protected abstract Task<int> ReadStreamAsync(Stream stream, byte[] buffer, string key);
 
         private void EnsureDownloadStarted()
         {
@@ -73,9 +130,11 @@ namespace StorjVirtualDisk
                 {
                     StorjApiClient client = new StorjApiClient(apiUrl);
 
-                    downloadTask = client.DownloadStreamedAsync(hash, key);
+                    downloadTask = DownloadStreamedAsync(client, hash, key);
                 }
             }
         }
+
+        protected abstract Task<Stream> DownloadStreamedAsync(StorjApiClient client, string hash, string key);
     }
 }
